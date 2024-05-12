@@ -136,17 +136,6 @@ class MainWindow(QtWidgets.QMainWindow):
     ###############################################################################################
     #                                  Loading & Rendering Functions                              #
     ###############################################################################################
-    @staticmethod
-    def dicom_processing(source, dest):
-        """
-        Обрабатываем все .dcm из папки и сохраняем новые .dcm
-        :param source:
-        :param dest:
-        :return:
-        """
-        dicom_files = find_dicom_files(source)
-        processed_dicom = [process_dicom(dicom, dest) for dicom in dicom_files]
-
     # окно с прогресс-баром
     class ProgressDialog(QtWidgets.QDialog):
         def __init__(self, total_steps, parent=None):
@@ -158,6 +147,26 @@ class MainWindow(QtWidgets.QMainWindow):
             self.progress_bar.setMinimum(0)
             self.progress_bar.setMaximum(total_steps)
             self.progress_bar.setValue(0)
+
+    def dicom_processing(self, source, dest):
+        """
+        Обрабатываем все .dcm из папки и сохраняем новые .dcm
+        :param source:
+        :param dest:
+        :return:
+        """
+        dicom_files = find_dicom_files(source)
+        total = len(dicom_files)
+
+        progress_dialog = MainWindow.ProgressDialog(total_steps=total, parent=self)
+        progress_dialog.show()
+
+        for idx, dicom in enumerate(dicom_files):
+            process_dicom(dicom, dest)
+            progress_dialog.progress_bar.setValue(idx + 1)
+            QtWidgets.QApplication.processEvents()  # Чтобы UI не "замерзал"
+
+        progress_dialog.close()
 
     def load_dicom_folder(self):
         """
