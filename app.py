@@ -2,13 +2,13 @@ import sys
 
 import numpy as np
 import vtk
-from PyQt5.QtWidgets import QFileDialog
-from PyQt5.QtCore import Qt
+from PyQt6.QtWidgets import QFileDialog
+from PyQt6.QtCore import Qt
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
-from PyQt5 import uic, QtWidgets
-from PyQt5.QtCore import Qt, QTimer  # добавляем QTimer
+from PyQt6 import uic, QtWidgets
+from PyQt6.QtCore import Qt, QTimer  # добавляем QTimer
 import qdarkstyle
-from PyQt5.QtGui import QIcon
+from PyQt6.QtGui import QIcon
 from vtk import vtkInteractorStyleTrackballCamera
 from vtkmodules.util.numpy_support import vtk_to_numpy
 
@@ -497,7 +497,7 @@ def main():
     # app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
     main_window = MainWindow()
     main_window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 if __name__ == '__main__':
     main()
