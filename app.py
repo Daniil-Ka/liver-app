@@ -2,7 +2,7 @@ import sys
 
 import numpy as np
 import vtk
-from PyQt6.QtWidgets import QFileDialog
+from PyQt6.QtWidgets import QFileDialog, QWidget
 from PyQt6.QtCore import Qt
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from PyQt6 import uic, QtWidgets
@@ -11,6 +11,7 @@ import qdarkstyle
 from PyQt6.QtGui import QIcon
 from vtk import vtkInteractorStyleTrackballCamera
 from vtkmodules.util.numpy_support import vtk_to_numpy
+from SimpleRangeSlider import SimpleRangeSlider
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -25,6 +26,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.mapper = None
         self.volume = None
+
+        self.bounds = None
+        self.slicing_planes = None
 
         self.init_ui()
 
@@ -144,8 +148,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Задаём фиксированные пути к папкам (закомментирован вызов диалога)
         # folder_dialog = QFileDialog.getExistingDirectory(self, "Select DICOM Series Folder")
-        folder1 = r"C:\Users\dkrap\Desktop\liver\DICOM_DATASET"
-        folder2 = r"C:\Users\dkrap\Desktop\liver\DICOM_DATASET_o"
+        folder1 = r"DICOM_DATASET"
+        folder2 = r"DICOM_DATASET_o"
 
         # Загрузка исходного объёма из folder1 (для лучевого рендеринга)
         self.reader1 = vtk.vtkDICOMImageReader()
@@ -180,9 +184,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         if self.reader:
             if self.ui.surfaceRadio.isChecked():
+                print(2)
                 self.show_surface_widgets()
                 self.render_iso_surface()
             elif self.ui.rayCastRadio.isChecked():
+                print(1)
                 self.hide_surface_widgets()
                 self.render_ray_casting()
 
@@ -279,6 +285,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.slice_timer.timeout.connect(self.update_slicing_plane)
         self.slice_timer.start(20)  # обновление каждые 100 мс
 
+    # def update_plane_z(self, lower, upper):
+    #     self.z_slices[0] = lower
+    #     self.z_slices[1] = upper
+    #     self.update_slicing_plane()
+    #
+    # def update_plane_y(self, lower, upper):
+    #     self.y_slices[0] = lower
+    #     self.y_slices[1] = upper
+    #     self.update_slicing_plane()
+    #
+    # def update_plane_x(self, lower, upper):
+    #     self.x_slices[0] = lower
+    #     self.x_slices[1] = upper
+    #     self.update_slicing_plane()
+
     def update_slicing_plane(self):
         self.calculate_liver_volume()
         bounds = self.body_data.GetBounds()
@@ -313,21 +334,42 @@ class MainWindow(QtWidgets.QMainWindow):
             position = camera.GetPosition()
             focal_point = camera.GetFocalPoint()
 
+            # if self.bounds:
+            #     self.slicing_planes = []
+            #     # x y z pairs
+            #     x_min, x_max, y_min, y_max, z_min, z_max = self.bounds
+            #     slicing_z_min = vtk.vtkPlane()
+            #     slicing_z_min.SetOrigin(0, 0, 50)
+            #     slicing_z_min.SetNormal(0, 0, -1)
+            #     self.slicing_planes.append(slicing_z_min)
+            #
+            #     slicing_z_max = vtk.vtkPlane()
+            #     slicing_z_max.SetOrigin(x_min, y_min, z_max)
+            #     slicing_z_max.SetNormal(0, 0, -1)
+            #     self.slicing_planes.append(slicing_z_max)
+
             # Объём 1: Исходный (folder1) – синий оттенок
             mapper1 = vtk.vtkGPUVolumeRayCastMapper()
             mapper1.SetInputData(self.body_data)
+            # if self.slicing_planes:
+            #     mapper1.AddClippingPlane(self.slicing_planes[0])
+            print(self.bounds)
 
             # Создаем или обновляем clipping plane для синего объёма
-            if not hasattr(self, 'clipping_plane'):
-                self.clipping_plane = vtk.vtkPlane()
-                bounds = self.body_data.GetBounds()  # (xmin, xmax, ymin, ymax, zmin, zmax)
-                xmin, xmax, ymin, ymax, zmin, zmax = bounds
-                # Если позиция среза ещё не инициализирована, используем zmin
-                initial_z = self.slice_z_position if hasattr(self, 'slice_z_position') else zmin
-                self.clipping_plane.SetOrigin(xmin, ymin, initial_z)
-                # Задаём нормаль (например, чтобы отображать только нижнюю часть относительно плоскости)
-                self.clipping_plane.SetNormal(0, 0, -1)
-            mapper1.AddClippingPlane(self.clipping_plane)
+            # if not hasattr(self, 'clipping_plane'):
+            #     self.clipping_plane = vtk.vtkPlane()
+            #     bounds = self.body_data.GetBounds()  # (xmin, xmax, ymin, ymax, zmin, zmax)
+            #     xmin, xmax, ymin, ymax, zmin, zmax = bounds
+            #     # Если позиция среза ещё не инициализирована, используем zmin
+            #     initial_z = self.slice_z_position if hasattr(self, 'slice_z_position') else zmin
+            #     self.clipping_plane.SetOrigin(xmin, ymin, initial_z)
+            #     # Задаём нормаль (например, чтобы отображать только нижнюю часть относительно плоскости)
+            #     self.clipping_plane.SetNormal(0, 0, -1)
+
+            # clipping_2 = vtk.vtkPlane()
+            # clipping_2.SetOrigin(0, 0, 25)
+            # clipping_2.SetNormal(0, 0, 1)
+            # mapper1.AddClippingPlane(clipping_2)
 
             volume_property1 = vtk.vtkVolumeProperty()
             color_transfer1 = vtk.vtkColorTransferFunction()
@@ -345,9 +387,11 @@ class MainWindow(QtWidgets.QMainWindow):
             volume1.SetMapper(mapper1)
             volume1.SetProperty(volume_property1)
 
-            # Объём 2: Отредактированный (folder2) – красный оттенок
             mapper2 = vtk.vtkGPUVolumeRayCastMapper()
             mapper2.SetInputData(self.liver_data)
+            # if self.slicing_planes:
+            #     for plane in self.slicing_planes:
+            #         mapper2.AddClippingPlane(plane)
             volume_property2 = vtk.vtkVolumeProperty()
             color_transfer2 = vtk.vtkColorTransferFunction()
             color_transfer2.AddRGBPoint(0, 1, 0, 0)  # красный
@@ -364,6 +408,7 @@ class MainWindow(QtWidgets.QMainWindow):
             volume2.SetMapper(mapper2)
             volume2.SetProperty(volume_property2)
 
+
             self.renderer.RemoveAllViewProps()
             self.renderer.AddVolume(volume1)
             self.renderer.AddVolume(volume2)
@@ -376,10 +421,25 @@ class MainWindow(QtWidgets.QMainWindow):
             self.volume1 = volume1
             self.volume2 = volume2
 
-            # Если плоскость среза еще не создана, создаём её
-            if not hasattr(self, 'plane_actor'):
-                self.init_slicing_plane()
+            if not hasattr(self, 'boxWidget'):
+                self.box_rep = vtk.vtkBoxRepresentation()
+                self.box_widget = vtk.vtkBoxWidget2()
+                self.box_widget.SetInteractor(self.render_window_interactor)
+                self.box_widget.SetRepresentation(self.box_rep)
 
+                self.box_rep.SetPlaceFactor(1.0)
+                self.box_rep.PlaceWidget(self.volume1.GetBounds())
+                self.box_widget.On()
+
+                self.box_widget.ScalingEnabledOff()  # Запрет масштабирования
+                self.box_widget.TranslationEnabledOff()  # Запрет перемещения центра
+                self.box_widget.RotationEnabledOff()  # Запрет вращения
+                self.box_widget.AddObserver("InteractionEvent", self.on_bounding_box_update)
+
+    def on_bounding_box_update(self, caller, event):
+        bounds = caller.GetRepresentation().GetBounds()
+        self.bounds = bounds
+        self.render_ray_casting()
 
 
     def volume_color_transfer_function(self):
