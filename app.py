@@ -334,26 +334,47 @@ class MainWindow(QtWidgets.QMainWindow):
             position = camera.GetPosition()
             focal_point = camera.GetFocalPoint()
 
-            # if self.bounds:
-            #     self.slicing_planes = []
-            #     # x y z pairs
-            #     x_min, x_max, y_min, y_max, z_min, z_max = self.bounds
-            #     slicing_z_min = vtk.vtkPlane()
-            #     slicing_z_min.SetOrigin(0, 0, 50)
-            #     slicing_z_min.SetNormal(0, 0, -1)
-            #     self.slicing_planes.append(slicing_z_min)
-            #
-            #     slicing_z_max = vtk.vtkPlane()
-            #     slicing_z_max.SetOrigin(x_min, y_min, z_max)
-            #     slicing_z_max.SetNormal(0, 0, -1)
-            #     self.slicing_planes.append(slicing_z_max)
+            if self.bounds:
+                self.slicing_planes = []
+                # x y z pairs
+                x_min, x_max, y_min, y_max, z_min, z_max = self.bounds
+
+                slicing_z_min = vtk.vtkPlane()
+                slicing_z_min.SetOrigin(0, 0, z_min)
+                slicing_z_min.SetNormal(0, 0, 1)
+                self.slicing_planes.append(slicing_z_min)
+
+                slicing_z_max = vtk.vtkPlane()
+                slicing_z_max.SetOrigin(0, 0, z_max)
+                slicing_z_max.SetNormal(0, 0, -1)
+                self.slicing_planes.append(slicing_z_max)
+
+                slicing_y_min = vtk.vtkPlane()
+                slicing_y_min.SetOrigin(0, y_min, 0)
+                slicing_y_min.SetNormal(0, 1, 0)
+                self.slicing_planes.append(slicing_y_min)
+
+                slicing_y_max = vtk.vtkPlane()
+                slicing_y_max.SetOrigin(0, y_max, 0)
+                slicing_y_max.SetNormal(0, -1, 0)
+                self.slicing_planes.append(slicing_y_max)
+
+                slicing_x_min = vtk.vtkPlane()
+                slicing_x_min.SetOrigin(x_min, 0, 0)
+                slicing_x_min.SetNormal(1, 0, 0)
+                self.slicing_planes.append(slicing_x_min)
+
+                slicing_x_max = vtk.vtkPlane()
+                slicing_x_max.SetOrigin(x_max, 0, 0)
+                slicing_x_max.SetNormal(-1, 0, 0)
+                self.slicing_planes.append(slicing_x_max)
 
             # Объём 1: Исходный (folder1) – синий оттенок
             mapper1 = vtk.vtkGPUVolumeRayCastMapper()
             mapper1.SetInputData(self.body_data)
-            # if self.slicing_planes:
-            #     mapper1.AddClippingPlane(self.slicing_planes[0])
-            print(self.bounds)
+            if self.slicing_planes:
+                for plane in self.slicing_planes:
+                    mapper1.AddClippingPlane(plane)
 
             # Создаем или обновляем clipping plane для синего объёма
             # if not hasattr(self, 'clipping_plane'):
@@ -365,11 +386,6 @@ class MainWindow(QtWidgets.QMainWindow):
             #     self.clipping_plane.SetOrigin(xmin, ymin, initial_z)
             #     # Задаём нормаль (например, чтобы отображать только нижнюю часть относительно плоскости)
             #     self.clipping_plane.SetNormal(0, 0, -1)
-
-            # clipping_2 = vtk.vtkPlane()
-            # clipping_2.SetOrigin(0, 0, 25)
-            # clipping_2.SetNormal(0, 0, 1)
-            # mapper1.AddClippingPlane(clipping_2)
 
             volume_property1 = vtk.vtkVolumeProperty()
             color_transfer1 = vtk.vtkColorTransferFunction()
@@ -389,9 +405,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
             mapper2 = vtk.vtkGPUVolumeRayCastMapper()
             mapper2.SetInputData(self.liver_data)
-            # if self.slicing_planes:
-            #     for plane in self.slicing_planes:
-            #         mapper2.AddClippingPlane(plane)
+            if self.slicing_planes:
+                for plane in self.slicing_planes:
+                    mapper2.AddClippingPlane(plane)
             volume_property2 = vtk.vtkVolumeProperty()
             color_transfer2 = vtk.vtkColorTransferFunction()
             color_transfer2.AddRGBPoint(0, 1, 0, 0)  # красный
@@ -416,12 +432,17 @@ class MainWindow(QtWidgets.QMainWindow):
             # Восстанавливаем положение камеры
             camera.SetPosition(position)
             camera.SetFocalPoint(focal_point)
+            if hasattr(self, 'box_widget'):
+                self.box_widget.SetInteractor(self.render_window_interactor)
+                self.box_widget.SetRepresentation(self.box_rep)
+                self.box_widget.On()
+                self.renderer.AddViewProp(self.box_rep)
             self.render_window.Render()
 
             self.volume1 = volume1
             self.volume2 = volume2
 
-            if not hasattr(self, 'boxWidget'):
+            if not hasattr(self, 'box_widget'):
                 self.box_rep = vtk.vtkBoxRepresentation()
                 self.box_widget = vtk.vtkBoxWidget2()
                 self.box_widget.SetInteractor(self.render_window_interactor)
@@ -435,6 +456,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.box_widget.TranslationEnabledOff()  # Запрет перемещения центра
                 self.box_widget.RotationEnabledOff()  # Запрет вращения
                 self.box_widget.AddObserver("InteractionEvent", self.on_bounding_box_update)
+
+
 
     def on_bounding_box_update(self, caller, event):
         bounds = caller.GetRepresentation().GetBounds()
