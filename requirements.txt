@@ -1,4 +1,9 @@
-PyQt5
-PyQt6
-vtk
+PyQt6~=6.9.0
+vtk~=9.3.0
 qdarkstyle
+
+ultralytics~=8.3.59
+pydicom~=3.0.1
+numpy~=1.26.4
+pillow~=10.3.0
+dicom2jpg~=0.1.10

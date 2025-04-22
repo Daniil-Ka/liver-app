@@ -1,16 +1,23 @@
+import io
+import os
 import sys
+import traceback
+from os import PathLike
 
 import numpy as np
 import vtk
-from PyQt6.QtWidgets import QFileDialog
-from PyQt6.QtCore import Qt
-from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+from PIL import Image
+from PIL import ImageOps, ImageChops
 from PyQt6 import uic, QtWidgets
-from PyQt6.QtCore import Qt, QTimer  # добавляем QTimer
-import qdarkstyle
+from PyQt6.QtCore import QTimer  # добавляем QTimer
 from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QFileDialog
+from dicom2jpg import io2img, dicom2img
 from vtk import vtkInteractorStyleTrackballCamera
+from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util.numpy_support import vtk_to_numpy
+
+from model.model import model
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -142,8 +149,77 @@ class MainWindow(QtWidgets.QMainWindow):
             self.renderer.RemoveActor(self.actor)
         self.renderer.RemoveAllViewProps()
 
-        # Задаём фиксированные пути к папкам (закомментирован вызов диалога)
-        # folder_dialog = QFileDialog.getExistingDirectory(self, "Select DICOM Series Folder")
+        # folder1 = QFileDialog.getExistingDirectory(self, "Выберите папку с снимками DICOM")
+        # if not folder1:
+        #     return  # пользователь отменил выбор
+
+        def find_dicom_files(folder_path):
+            dicom_files = []
+            for root, _, files in os.walk(folder_path):
+                for file in files:
+                    if file.lower().endswith(".dcm"):
+                        dicom_files.append(os.path.join(root, file))
+            return dicom_files
+
+        # dicom_files = find_dicom_files(folder1)
+
+        def process_dicom(file: PathLike):
+            """
+            Обрабатывает DICOM-файлы напрямую из байтового содержимого,
+            использует модель для анализа и возвращает обработанное изображение с цветными масками.
+            """
+
+            img_data = dicom2img(file)  # Конвертируем DICOM в numpy.ndarray
+
+            # Проверка размерностей
+            if len(img_data.shape) > 3:
+                raise ValueError("DICOM содержит больше измерений, чем поддерживается.")
+
+            # Извлекаем первый слой, если это многослойный DICOM
+            if len(img_data.shape) == 3:
+                img_data = img_data[:, :, 0]
+
+            # Нормализуем массив к диапазону 0-255 (если это необходимо)
+            img_data = (img_data - np.min(img_data)) / (np.max(img_data) - np.min(img_data)) * 255
+            img_data = img_data.astype(np.uint8)
+
+            # Преобразуем 2D массив в PIL Image (градации серого)
+            base_image = Image.fromarray(img_data).convert("L")
+
+            # Масштабируем изображение до 640x640
+            base_image = ImageOps.fit(base_image, (640, 640), Image.Resampling.LANCZOS)
+
+            # Создаём RGBA-изображение для наложения цветной маски
+            overlay_image = base_image.convert("RGBA")
+
+            # Прогон изображения через модель YOLO
+            img_data_rgb = np.array(base_image.convert("RGB"))
+            results = model.predict(img_data_rgb)
+
+            # Наложение масок
+            if results[0].masks is not None:  # Проверяем наличие масок
+                masks = results[0].masks.data.cpu().numpy()  # Маски (numpy array)
+                # Создаем пустую маску (изначально все черное, прозрачное)
+                combined_mask = Image.new("L", overlay_image.size, 0)
+
+                for mask in masks:
+                    mask_image = Image.fromarray((mask + 254).astype(np.uint8))
+
+                    # Объединяем текущую маску с общей маской
+                    combined_mask = ImageChops.lighter(combined_mask, mask_image)
+                overlay_image.putalpha(combined_mask)
+
+            # Конвертируем обратно в RGB для сохранения
+            final_image = overlay_image.convert("RGBA")
+            final_image.show()
+
+            # Сохраняем обработанное изображение в поток
+            # image_io = io.BytesIO()
+            # final_image.save(image_io, format="PNG")
+            # image_io.seek(0)
+
+        # process_dicom(dicom_files[0])
+
         folder1 = r"C:\Users\dkrap\Desktop\liver\DICOM_DATASET"
         folder2 = r"C:\Users\dkrap\Desktop\liver\DICOM_DATASET_o"
 
@@ -173,6 +249,34 @@ class MainWindow(QtWidgets.QMainWindow):
         self.vtk_widget.resize(self.ui.viewWidget.size())
         self.renderer.ResetCamera()
         self.render_window.Render()
+
+        # TODO
+        # Получаем камеру
+        camera = self.renderer.GetActiveCamera()
+
+        # Центр объёма
+        center = self.body_data.GetCenter()
+        bounds = self.body_data.GetBounds()
+
+        # Радиус сцены — например, высота по оси Y
+        y_range = bounds[3] - bounds[2]  # ymax - ymin
+
+        # Настраиваем фокус на центр объекта
+        camera.SetFocalPoint(center)
+
+        # Ставим камеру выше по Y, чтобы смотреть "с фронта"
+        camera.SetPosition(center[0], center[1] + y_range * 1.5, center[2])
+
+        # Указываем, что вверх — ось Z
+        camera.SetViewUp(0, 0, -1)
+
+        # Обновляем обрезку (важно!)
+        self.renderer.ResetCameraClippingRange()
+
+        # Рендерим
+        self.render_window.Render()
+
+        self.render_ray_casting()
 
     def render_volume(self):
         """
@@ -380,9 +484,8 @@ class MainWindow(QtWidgets.QMainWindow):
             if not hasattr(self, 'plane_actor'):
                 self.init_slicing_plane()
 
-
-
-    def volume_color_transfer_function(self):
+    @staticmethod
+    def volume_color_transfer_function():
         volume_color = vtk.vtkColorTransferFunction()
         overall_color_scalar_value = 0
         overall_color_rgb = [0.0, 0.0, 0.0]
@@ -392,7 +495,8 @@ class MainWindow(QtWidgets.QMainWindow):
         volume_color.AddRGBPoint(1150, 1.0, 1.0, 0.9)
         return volume_color
 
-    def scalar_opacity_transfer_function(self):
+    @staticmethod
+    def scalar_opacity_transfer_function():
         volume_scalar_opacity = vtk.vtkPiecewiseFunction()
         volume_scalar_opacity.AddPoint(0, 0.00)
         volume_scalar_opacity.AddPoint(500, 1.0)
@@ -468,7 +572,7 @@ class MainWindow(QtWidgets.QMainWindow):
             for jj in range(max(j - brush_radius, extent[2]), min(j + brush_radius + 1, extent[3] + 1)):
                 for ii in range(max(i - brush_radius, extent[0]), min(i + brush_radius + 1, extent[1] + 1)):
                     # Проверяем, находится ли воксель внутри сферы кисти
-                    dist = ((ii - i)**2 + (jj - j)**2 + (kk - k)**2)**0.5
+                    dist = ((ii - i) ** 2 + (jj - j) ** 2 + (kk - k) ** 2) ** 0.5
                     if dist <= brush_radius:
                         index = ii + (jj * dims[0]) + (kk * dims[0] * dims[1])
                         curr_val = scalars.GetTuple1(index)
@@ -492,6 +596,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def keyPressEvent(self, event):
         super(MainWindow, self).keyPressEvent(event)
 
+
 def main():
     app = QtWidgets.QApplication([])
     # app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
@@ -499,5 +604,10 @@ def main():
     main_window.show()
     sys.exit(app.exec())
 
+
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as error:
+        print(traceback.format_exc())
+        raise error
