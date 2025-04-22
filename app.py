@@ -1,23 +1,17 @@
-import io
-import os
 import sys
-import traceback
-from os import PathLike
 
 import numpy as np
 import vtk
-from PIL import Image
-from PIL import ImageOps, ImageChops
+from PyQt6.QtWidgets import QFileDialog, QWidget
+from PyQt6.QtCore import Qt
+from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from PyQt6 import uic, QtWidgets
-from PyQt6.QtCore import QTimer  # добавляем QTimer
+from PyQt6.QtCore import Qt, QTimer  # добавляем QTimer
+import qdarkstyle
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QFileDialog
-from dicom2jpg import io2img, dicom2img
 from vtk import vtkInteractorStyleTrackballCamera
-from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util.numpy_support import vtk_to_numpy
-
-from model.model import model
+from SimpleRangeSlider import SimpleRangeSlider
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -32,6 +26,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.mapper = None
         self.volume = None
+
+        self.bounds = None
+        self.slicing_planes = None
 
         self.init_ui()
 
@@ -149,79 +146,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.renderer.RemoveActor(self.actor)
         self.renderer.RemoveAllViewProps()
 
-        # folder1 = QFileDialog.getExistingDirectory(self, "Выберите папку с снимками DICOM")
-        # if not folder1:
-        #     return  # пользователь отменил выбор
-
-        def find_dicom_files(folder_path):
-            dicom_files = []
-            for root, _, files in os.walk(folder_path):
-                for file in files:
-                    if file.lower().endswith(".dcm"):
-                        dicom_files.append(os.path.join(root, file))
-            return dicom_files
-
-        # dicom_files = find_dicom_files(folder1)
-
-        def process_dicom(file: PathLike):
-            """
-            Обрабатывает DICOM-файлы напрямую из байтового содержимого,
-            использует модель для анализа и возвращает обработанное изображение с цветными масками.
-            """
-
-            img_data = dicom2img(file)  # Конвертируем DICOM в numpy.ndarray
-
-            # Проверка размерностей
-            if len(img_data.shape) > 3:
-                raise ValueError("DICOM содержит больше измерений, чем поддерживается.")
-
-            # Извлекаем первый слой, если это многослойный DICOM
-            if len(img_data.shape) == 3:
-                img_data = img_data[:, :, 0]
-
-            # Нормализуем массив к диапазону 0-255 (если это необходимо)
-            img_data = (img_data - np.min(img_data)) / (np.max(img_data) - np.min(img_data)) * 255
-            img_data = img_data.astype(np.uint8)
-
-            # Преобразуем 2D массив в PIL Image (градации серого)
-            base_image = Image.fromarray(img_data).convert("L")
-
-            # Масштабируем изображение до 640x640
-            base_image = ImageOps.fit(base_image, (640, 640), Image.Resampling.LANCZOS)
-
-            # Создаём RGBA-изображение для наложения цветной маски
-            overlay_image = base_image.convert("RGBA")
-
-            # Прогон изображения через модель YOLO
-            img_data_rgb = np.array(base_image.convert("RGB"))
-            results = model.predict(img_data_rgb)
-
-            # Наложение масок
-            if results[0].masks is not None:  # Проверяем наличие масок
-                masks = results[0].masks.data.cpu().numpy()  # Маски (numpy array)
-                # Создаем пустую маску (изначально все черное, прозрачное)
-                combined_mask = Image.new("L", overlay_image.size, 0)
-
-                for mask in masks:
-                    mask_image = Image.fromarray((mask + 254).astype(np.uint8))
-
-                    # Объединяем текущую маску с общей маской
-                    combined_mask = ImageChops.lighter(combined_mask, mask_image)
-                overlay_image.putalpha(combined_mask)
-
-            # Конвертируем обратно в RGB для сохранения
-            final_image = overlay_image.convert("RGBA")
-            final_image.show()
-
-            # Сохраняем обработанное изображение в поток
-            # image_io = io.BytesIO()
-            # final_image.save(image_io, format="PNG")
-            # image_io.seek(0)
-
-        # process_dicom(dicom_files[0])
-
-        folder1 = r"C:\Users\dkrap\Desktop\liver\DICOM_DATASET"
-        folder2 = r"C:\Users\dkrap\Desktop\liver\DICOM_DATASET_o"
+        # Задаём фиксированные пути к папкам (закомментирован вызов диалога)
+        # folder_dialog = QFileDialog.getExistingDirectory(self, "Select DICOM Series Folder")
+        folder1 = r"DICOM_DATASET"
+        folder2 = r"DICOM_DATASET_o"
 
         # Загрузка исходного объёма из folder1 (для лучевого рендеринга)
         self.reader1 = vtk.vtkDICOMImageReader()
@@ -250,43 +178,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.renderer.ResetCamera()
         self.render_window.Render()
 
-        # TODO
-        # Получаем камеру
-        camera = self.renderer.GetActiveCamera()
-
-        # Центр объёма
-        center = self.body_data.GetCenter()
-        bounds = self.body_data.GetBounds()
-
-        # Радиус сцены — например, высота по оси Y
-        y_range = bounds[3] - bounds[2]  # ymax - ymin
-
-        # Настраиваем фокус на центр объекта
-        camera.SetFocalPoint(center)
-
-        # Ставим камеру выше по Y, чтобы смотреть "с фронта"
-        camera.SetPosition(center[0], center[1] + y_range * 1.5, center[2])
-
-        # Указываем, что вверх — ось Z
-        camera.SetViewUp(0, 0, -1)
-
-        # Обновляем обрезку (важно!)
-        self.renderer.ResetCameraClippingRange()
-
-        # Рендерим
-        self.render_window.Render()
-
-        self.render_ray_casting()
-
     def render_volume(self):
         """
         Выбирает режим рендеринга и вызывает соответствующий метод.
         """
         if self.reader:
             if self.ui.surfaceRadio.isChecked():
+                print(2)
                 self.show_surface_widgets()
                 self.render_iso_surface()
             elif self.ui.rayCastRadio.isChecked():
+                print(1)
                 self.hide_surface_widgets()
                 self.render_ray_casting()
 
@@ -383,6 +285,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.slice_timer.timeout.connect(self.update_slicing_plane)
         self.slice_timer.start(20)  # обновление каждые 100 мс
 
+    # def update_plane_z(self, lower, upper):
+    #     self.z_slices[0] = lower
+    #     self.z_slices[1] = upper
+    #     self.update_slicing_plane()
+    #
+    # def update_plane_y(self, lower, upper):
+    #     self.y_slices[0] = lower
+    #     self.y_slices[1] = upper
+    #     self.update_slicing_plane()
+    #
+    # def update_plane_x(self, lower, upper):
+    #     self.x_slices[0] = lower
+    #     self.x_slices[1] = upper
+    #     self.update_slicing_plane()
+
     def update_slicing_plane(self):
         self.calculate_liver_volume()
         bounds = self.body_data.GetBounds()
@@ -417,21 +334,58 @@ class MainWindow(QtWidgets.QMainWindow):
             position = camera.GetPosition()
             focal_point = camera.GetFocalPoint()
 
+            if self.bounds:
+                self.slicing_planes = []
+                # x y z pairs
+                x_min, x_max, y_min, y_max, z_min, z_max = self.bounds
+
+                slicing_z_min = vtk.vtkPlane()
+                slicing_z_min.SetOrigin(0, 0, z_min)
+                slicing_z_min.SetNormal(0, 0, 1)
+                self.slicing_planes.append(slicing_z_min)
+
+                slicing_z_max = vtk.vtkPlane()
+                slicing_z_max.SetOrigin(0, 0, z_max)
+                slicing_z_max.SetNormal(0, 0, -1)
+                self.slicing_planes.append(slicing_z_max)
+
+                slicing_y_min = vtk.vtkPlane()
+                slicing_y_min.SetOrigin(0, y_min, 0)
+                slicing_y_min.SetNormal(0, 1, 0)
+                self.slicing_planes.append(slicing_y_min)
+
+                slicing_y_max = vtk.vtkPlane()
+                slicing_y_max.SetOrigin(0, y_max, 0)
+                slicing_y_max.SetNormal(0, -1, 0)
+                self.slicing_planes.append(slicing_y_max)
+
+                slicing_x_min = vtk.vtkPlane()
+                slicing_x_min.SetOrigin(x_min, 0, 0)
+                slicing_x_min.SetNormal(1, 0, 0)
+                self.slicing_planes.append(slicing_x_min)
+
+                slicing_x_max = vtk.vtkPlane()
+                slicing_x_max.SetOrigin(x_max, 0, 0)
+                slicing_x_max.SetNormal(-1, 0, 0)
+                self.slicing_planes.append(slicing_x_max)
+
             # Объём 1: Исходный (folder1) – синий оттенок
             mapper1 = vtk.vtkGPUVolumeRayCastMapper()
             mapper1.SetInputData(self.body_data)
+            if self.slicing_planes:
+                for plane in self.slicing_planes:
+                    mapper1.AddClippingPlane(plane)
 
             # Создаем или обновляем clipping plane для синего объёма
-            if not hasattr(self, 'clipping_plane'):
-                self.clipping_plane = vtk.vtkPlane()
-                bounds = self.body_data.GetBounds()  # (xmin, xmax, ymin, ymax, zmin, zmax)
-                xmin, xmax, ymin, ymax, zmin, zmax = bounds
-                # Если позиция среза ещё не инициализирована, используем zmin
-                initial_z = self.slice_z_position if hasattr(self, 'slice_z_position') else zmin
-                self.clipping_plane.SetOrigin(xmin, ymin, initial_z)
-                # Задаём нормаль (например, чтобы отображать только нижнюю часть относительно плоскости)
-                self.clipping_plane.SetNormal(0, 0, -1)
-            mapper1.AddClippingPlane(self.clipping_plane)
+            # if not hasattr(self, 'clipping_plane'):
+            #     self.clipping_plane = vtk.vtkPlane()
+            #     bounds = self.body_data.GetBounds()  # (xmin, xmax, ymin, ymax, zmin, zmax)
+            #     xmin, xmax, ymin, ymax, zmin, zmax = bounds
+            #     # Если позиция среза ещё не инициализирована, используем zmin
+            #     initial_z = self.slice_z_position if hasattr(self, 'slice_z_position') else zmin
+            #     self.clipping_plane.SetOrigin(xmin, ymin, initial_z)
+            #     # Задаём нормаль (например, чтобы отображать только нижнюю часть относительно плоскости)
+            #     self.clipping_plane.SetNormal(0, 0, -1)
 
             volume_property1 = vtk.vtkVolumeProperty()
             color_transfer1 = vtk.vtkColorTransferFunction()
@@ -449,9 +403,11 @@ class MainWindow(QtWidgets.QMainWindow):
             volume1.SetMapper(mapper1)
             volume1.SetProperty(volume_property1)
 
-            # Объём 2: Отредактированный (folder2) – красный оттенок
             mapper2 = vtk.vtkGPUVolumeRayCastMapper()
             mapper2.SetInputData(self.liver_data)
+            if self.slicing_planes:
+                for plane in self.slicing_planes:
+                    mapper2.AddClippingPlane(plane)
             volume_property2 = vtk.vtkVolumeProperty()
             color_transfer2 = vtk.vtkColorTransferFunction()
             color_transfer2.AddRGBPoint(0, 1, 0, 0)  # красный
@@ -468,6 +424,7 @@ class MainWindow(QtWidgets.QMainWindow):
             volume2.SetMapper(mapper2)
             volume2.SetProperty(volume_property2)
 
+
             self.renderer.RemoveAllViewProps()
             self.renderer.AddVolume(volume1)
             self.renderer.AddVolume(volume2)
@@ -475,17 +432,40 @@ class MainWindow(QtWidgets.QMainWindow):
             # Восстанавливаем положение камеры
             camera.SetPosition(position)
             camera.SetFocalPoint(focal_point)
+            if hasattr(self, 'box_widget'):
+                self.box_widget.SetInteractor(self.render_window_interactor)
+                self.box_widget.SetRepresentation(self.box_rep)
+                self.box_widget.On()
+                self.renderer.AddViewProp(self.box_rep)
             self.render_window.Render()
 
             self.volume1 = volume1
             self.volume2 = volume2
 
-            # Если плоскость среза еще не создана, создаём её
-            if not hasattr(self, 'plane_actor'):
-                self.init_slicing_plane()
+            if not hasattr(self, 'box_widget'):
+                self.box_rep = vtk.vtkBoxRepresentation()
+                self.box_widget = vtk.vtkBoxWidget2()
+                self.box_widget.SetInteractor(self.render_window_interactor)
+                self.box_widget.SetRepresentation(self.box_rep)
 
-    @staticmethod
-    def volume_color_transfer_function():
+                self.box_rep.SetPlaceFactor(1.0)
+                self.box_rep.PlaceWidget(self.volume1.GetBounds())
+                self.box_widget.On()
+
+                self.box_widget.ScalingEnabledOff()  # Запрет масштабирования
+                self.box_widget.TranslationEnabledOff()  # Запрет перемещения центра
+                self.box_widget.RotationEnabledOff()  # Запрет вращения
+                self.box_widget.AddObserver("InteractionEvent", self.on_bounding_box_update)
+
+
+
+    def on_bounding_box_update(self, caller, event):
+        bounds = caller.GetRepresentation().GetBounds()
+        self.bounds = bounds
+        self.render_ray_casting()
+
+
+    def volume_color_transfer_function(self):
         volume_color = vtk.vtkColorTransferFunction()
         overall_color_scalar_value = 0
         overall_color_rgb = [0.0, 0.0, 0.0]
@@ -495,8 +475,7 @@ class MainWindow(QtWidgets.QMainWindow):
         volume_color.AddRGBPoint(1150, 1.0, 1.0, 0.9)
         return volume_color
 
-    @staticmethod
-    def scalar_opacity_transfer_function():
+    def scalar_opacity_transfer_function(self):
         volume_scalar_opacity = vtk.vtkPiecewiseFunction()
         volume_scalar_opacity.AddPoint(0, 0.00)
         volume_scalar_opacity.AddPoint(500, 1.0)
@@ -572,7 +551,7 @@ class MainWindow(QtWidgets.QMainWindow):
             for jj in range(max(j - brush_radius, extent[2]), min(j + brush_radius + 1, extent[3] + 1)):
                 for ii in range(max(i - brush_radius, extent[0]), min(i + brush_radius + 1, extent[1] + 1)):
                     # Проверяем, находится ли воксель внутри сферы кисти
-                    dist = ((ii - i) ** 2 + (jj - j) ** 2 + (kk - k) ** 2) ** 0.5
+                    dist = ((ii - i)**2 + (jj - j)**2 + (kk - k)**2)**0.5
                     if dist <= brush_radius:
                         index = ii + (jj * dims[0]) + (kk * dims[0] * dims[1])
                         curr_val = scalars.GetTuple1(index)
@@ -596,7 +575,6 @@ class MainWindow(QtWidgets.QMainWindow):
     def keyPressEvent(self, event):
         super(MainWindow, self).keyPressEvent(event)
 
-
 def main():
     app = QtWidgets.QApplication([])
     # app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt6())
@@ -604,10 +582,5 @@ def main():
     main_window.show()
     sys.exit(app.exec())
 
-
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as error:
-        print(traceback.format_exc())
-        raise error
+    main()
