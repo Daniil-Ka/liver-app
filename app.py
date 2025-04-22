@@ -2,16 +2,13 @@ import sys
 
 import numpy as np
 import vtk
-from PyQt6.QtWidgets import QFileDialog, QWidget
-from PyQt6.QtCore import Qt
-from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from PyQt6 import uic, QtWidgets
-from PyQt6.QtCore import Qt, QTimer  # добавляем QTimer
-import qdarkstyle
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QFileDialog
 from vtk import vtkInteractorStyleTrackballCamera
+from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util.numpy_support import vtk_to_numpy
-from SimpleRangeSlider import SimpleRangeSlider
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -34,6 +31,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Добавляем обработчик нажатия левой кнопки мыши для рисования кистью
         self.render_window_interactor.AddObserver("KeyPressEvent", self.on_key_press)
+
+        self.render_window_interactor.AddObserver("LeftButtonPressEvent", self.on_left_button_press)
 
         self.render_window_interactor.SetInteractorStyle(vtkInteractorStyleTrackballCamera())
 
@@ -147,9 +146,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.renderer.RemoveAllViewProps()
 
         # Задаём фиксированные пути к папкам (закомментирован вызов диалога)
-        # folder_dialog = QFileDialog.getExistingDirectory(self, "Select DICOM Series Folder")
+        folder_dialog = QFileDialog.getExistingDirectory(self, "Выберите папку с снимками DICOM")
         folder1 = r"DICOM_DATASET"
-        folder2 = r"DICOM_DATASET_o"
+        folder2 = r"DICOM_MASKED"
 
         # Загрузка исходного объёма из folder1 (для лучевого рендеринга)
         self.reader1 = vtk.vtkDICOMImageReader()
@@ -177,6 +176,29 @@ class MainWindow(QtWidgets.QMainWindow):
         self.vtk_widget.resize(self.ui.viewWidget.size())
         self.renderer.ResetCamera()
         self.render_window.Render()
+
+        # Получаем камеру
+        camera = self.renderer.GetActiveCamera()
+        # Центр объёма
+        center = self.body_data.GetCenter()
+        bounds = self.body_data.GetBounds()
+        # Радиус сцены — например, высота по оси Y
+        y_range = bounds[3] - bounds[2]  # ymax - ymin
+
+        # Настраиваем фокус на центр объекта
+        camera.SetFocalPoint(center)
+
+        # Ставим камеру выше по Y, чтобы смотреть "с фронта"
+        camera.SetPosition(center[0], center[1] + y_range * 1.5, center[2])
+
+        # Указываем, что вверх — ось Z
+        camera.SetViewUp(0, 0, -1)
+
+        # Обновляем обрезку (важно!)
+        self.renderer.ResetCameraClippingRange()
+
+        self.render_ray_casting()
+
 
     def render_volume(self):
         """
@@ -285,23 +307,65 @@ class MainWindow(QtWidgets.QMainWindow):
         self.slice_timer.timeout.connect(self.update_slicing_plane)
         self.slice_timer.start(20)  # обновление каждые 100 мс
 
-    # def update_plane_z(self, lower, upper):
-    #     self.z_slices[0] = lower
-    #     self.z_slices[1] = upper
-    #     self.update_slicing_plane()
-    #
-    # def update_plane_y(self, lower, upper):
-    #     self.y_slices[0] = lower
-    #     self.y_slices[1] = upper
-    #     self.update_slicing_plane()
-    #
-    # def update_plane_x(self, lower, upper):
-    #     self.x_slices[0] = lower
-    #     self.x_slices[1] = upper
-    #     self.update_slicing_plane()
+    def calculate_visible_slice_volume(self, threshold=50):
+        """
+        Вычисляет объем печени только для видимых вокселей в пределах текущих границ (bounding box).
+        """
+        if not self.liver_data:
+            print("No liver data to calculate volume")
+            return 0.0
+
+        # Получаем скалярные данные среза
+        scalars = self.liver_data.GetPointData().GetScalars()
+        np_scalars = vtk_to_numpy(scalars)
+
+        # Получаем параметры среза и области
+        origin = self.liver_data.GetOrigin()
+        spacing = self.liver_data.GetSpacing()
+        dims = self.liver_data.GetDimensions()
+
+        # Преобразуем одномерный массив в трехмерный
+        np_scalars_3d = np_scalars.reshape(dims[2], dims[1], dims[0])
+
+        # Вычисляем объем одного вокселя
+        voxel_volume = spacing[0] * spacing[1] * spacing[2]
+
+        # Получаем текущие границы среза
+        xmin, xmax, ymin, ymax, zmin, zmax = self.bounds
+
+        # Переводим индексы среза в координаты
+        ixmin = int((xmin - origin[0]) / spacing[0])
+        ixmax = int((xmax - origin[0]) / spacing[0])
+        iymin = int((ymin - origin[1]) / spacing[1])
+        iymax = int((ymax - origin[1]) / spacing[1])
+        izmin = int((zmin - origin[2]) / spacing[2])
+        izmax = int((zmax - origin[2]) / spacing[2])
+
+        # Ограничиваем индексы допустимыми значениями, чтобы не выйти за пределы массива
+        ixmin = max(ixmin, 0)
+        ixmax = min(ixmax, dims[0])
+        iymin = max(iymin, 0)
+        iymax = min(iymax, dims[1])
+        izmin = max(izmin, 0)
+        izmax = min(izmax, dims[2])
+
+        # Подсчитываем количество видимых вокселей в пределах этих границ
+        visible_voxel_count = np.count_nonzero(np_scalars_3d[izmin:izmax, iymin:iymax, ixmin:ixmax] >= threshold)
+
+        # Общий объем = количество видимых вокселей * объем одного вокселя
+        total_volume = visible_voxel_count * voxel_volume
+
+        # Преобразуем объем в кубические сантиметры
+        volume_in_cubic_centimeters = total_volume / 1000.0  # если spacing в мм, то объем в куб. см
+
+        # Обновляем текст на UI для отображения объема
+        self.ui.volume.setText(f"Объем печени: {round(volume_in_cubic_centimeters, 4)} см^3")
+
+        print(f"Объем печени на видимом срезе: {round(volume_in_cubic_centimeters, 4)} cc")
+        return total_volume
 
     def update_slicing_plane(self):
-        self.calculate_liver_volume()
+
         bounds = self.body_data.GetBounds()
         zmin = bounds[4]
         zmax = bounds[5]
@@ -325,6 +389,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Обновляем положение clipping plane для синего объёма
         if hasattr(self, 'clipping_plane'):
             self.clipping_plane.SetOrigin(xmin, ymin, self.slice_z_position)
+
+        print('UPDATE SLICING PLANE')
+
+        # Вычисление объема для видимых вокселей на текущем срезе
+        self.calculate_visible_slice_volume()
 
         self.render_window.Render()
 
@@ -457,11 +526,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.box_widget.RotationEnabledOff()  # Запрет вращения
                 self.box_widget.AddObserver("InteractionEvent", self.on_bounding_box_update)
 
-
-
     def on_bounding_box_update(self, caller, event):
         bounds = caller.GetRepresentation().GetBounds()
         self.bounds = bounds
+
+        # Вычисляем объем для видимых вокселей в пределах этих новых границ
+        self.calculate_visible_slice_volume()
+
         self.render_ray_casting()
 
 
@@ -503,6 +574,7 @@ class MainWindow(QtWidgets.QMainWindow):
         click_pos = self.render_window_interactor.GetEventPosition()
         print("Click position (screen):", click_pos)
         picker = vtk.vtkVolumePicker()
+        picker.Set
         picker.Pick(click_pos[0], click_pos[1], 0, self.renderer)
         pick_position = picker.GetPickPosition()
         print("Picked world coordinates:", pick_position)
@@ -537,7 +609,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         # Задаём радиус кисти (в вокселях)
-        brush_radius = 50
+        brush_radius = 10
         intensity_increment = 200.0  # увеличение интенсивности
 
         # Получаем скалярное поле
@@ -565,7 +637,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_key_press(self, obj, event):
         key = obj.GetKeySym()
-        if key.lower() == "z":
+
+        if key == '1':
+            self.drawing_mode = 'add'  # Режим добавления
+            print("Mode switched to Add")
+        elif key == '2':
+            self.drawing_mode = 'remove'  # Режим удаления
+            print("Mode switched to Remove")
+
+        if key.lower() == 'v':
             self.on_left_button_press(obj, event)
 
     ###############################################################################################

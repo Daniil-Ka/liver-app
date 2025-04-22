@@ -1,3 +1,11 @@
 PyQt6
 vtk
 qdarkstyle
+dicom2jpg
+pydicom
+numpy
+pillow
+ultralytics
+onnxruntime
+opencv-python
+matplotlib
