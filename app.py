@@ -445,24 +445,57 @@ class MainWindow(QtWidgets.QMainWindow):
                 for plane in self.slicing_planes:
                     mapper1.AddClippingPlane(plane)
 
-            # Создаем или обновляем clipping plane для синего объёма
-            # if not hasattr(self, 'clipping_plane'):
-            #     self.clipping_plane = vtk.vtkPlane()
-            #     bounds = self.body_data.GetBounds()  # (xmin, xmax, ymin, ymax, zmin, zmax)
-            #     xmin, xmax, ymin, ymax, zmin, zmax = bounds
-            #     # Если позиция среза ещё не инициализирована, используем zmin
-            #     initial_z = self.slice_z_position if hasattr(self, 'slice_z_position') else zmin
-            #     self.clipping_plane.SetOrigin(xmin, ymin, initial_z)
-            #     # Задаём нормаль (например, чтобы отображать только нижнюю часть относительно плоскости)
-            #     self.clipping_plane.SetNormal(0, 0, -1)
-
             volume_property1 = vtk.vtkVolumeProperty()
+
             color_transfer1 = vtk.vtkColorTransferFunction()
-            color_transfer1.AddRGBPoint(0, 0, 0, 1)  # синий
-            color_transfer1.AddRGBPoint(1000, 0, 0, 1)
+
+            intensities = [-643.78106689453125, -584.65887451171875, -382.65924072265625, -237.65838623046875,
+                           -75.40606689453125, 40, 80, 114.5941162109375, 316.5936279296875, 461.59375]
+
+            colors = [
+                (0.0, 0.0, 0.0),  # черный
+                (1.0, 0.0, 0.0),  # красный
+                (1.0, 0.99920654296875, 0.0),  # желтый
+                (1.0, 1.0, 1.0),  # белый
+                (0.0, 0.0, 0.0),  # черный снова
+
+                (0, 1, 0),
+                (0, 1, 1),
+
+                (1.0, 0.0, 0.0),  # красный снова
+                (1.0, 0.99920654296875, 0.0),  # желтый снова
+                (1.0, 1.0, 1.0)  # белый снова
+            ]
+
+            for intensity, color in zip(intensities, colors):
+                r, g, b = color
+                color_transfer1.AddRGBPoint(intensity, r, g, b)
+
             volume_property1.SetColor(color_transfer1)
-            volume_property1.SetScalarOpacity(self.scalar_opacity_transfer_function())
-            volume_property1.SetGradientOpacity(self.gradient_opacity_transfer_function())
+
+            scalar_opacity = vtk.vtkPiecewiseFunction()
+
+            # Данные из XML:
+            opacity_points = [
+                (-643.78106689453125, 0.0),
+                (-584.65887451171875, 0.26931655406951904),
+                (-382.65924072265625, 0.46969130635261536),
+                (-237.65838623046875, 0.51899993419647217),
+                (-75.40606689453125, 0.0),
+
+                (40, 1.0),
+                (80, 1.0),
+
+                (114.5941162109375, 0.27931660413742065),
+                (316.5936279296875, 0.28899994492530823),
+                (461.59375, 0.28899994492530823)
+            ]
+
+            for intensity, opacity in opacity_points:
+                scalar_opacity.AddPoint(intensity, opacity)
+
+            volume_property1.SetScalarOpacity(scalar_opacity)
+            #volume_property1.SetGradientOpacity(self.gradient_opacity_transfer_function())
             volume_property1.SetInterpolationTypeToLinear()
             volume_property1.ShadeOn()
             volume_property1.SetAmbient(self.ui.ambientSlider.value() / 10.0)
@@ -496,7 +529,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self.renderer.RemoveAllViewProps()
             self.renderer.AddVolume(volume1)
-            self.renderer.AddVolume(volume2)
+            #self.renderer.AddVolume(volume2)
 
             # Восстанавливаем положение камеры
             camera.SetPosition(position)
@@ -509,7 +542,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.render_window.Render()
 
             self.volume1 = volume1
-            self.volume2 = volume2
+            #self.volume2 = volume2
 
             if not hasattr(self, 'box_widget'):
                 self.box_rep = vtk.vtkBoxRepresentation()
