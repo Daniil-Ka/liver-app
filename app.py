@@ -450,7 +450,7 @@ class MainWindow(QtWidgets.QMainWindow):
             color_transfer1 = vtk.vtkColorTransferFunction()
 
             intensities = [-643.78106689453125, -584.65887451171875, -382.65924072265625, -237.65838623046875,
-                           -75.40606689453125, 40, 80, 114.5941162109375, 316.5936279296875, 461.59375]
+                           -75.40606689453125, 114.5941162109375, 316.5936279296875, 461.59375]
 
             colors = [
                 (0.0, 0.0, 0.0),  # черный
@@ -459,8 +459,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 (1.0, 1.0, 1.0),  # белый
                 (0.0, 0.0, 0.0),  # черный снова
 
-                (0, 1, 0),
-                (0, 1, 1),
+                # (0, 1, 0),
+                # (0, 1, 1),
 
                 (1.0, 0.0, 0.0),  # красный снова
                 (1.0, 0.99920654296875, 0.0),  # желтый снова
@@ -483,8 +483,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 (-237.65838623046875, 0.51899993419647217),
                 (-75.40606689453125, 0.0),
 
-                (40, 1.0),
-                (80, 1.0),
+                # (40, 1.0),
+                # (80, 1.0),
 
                 (114.5941162109375, 0.27931660413742065),
                 (316.5936279296875, 0.28899994492530823),
@@ -529,7 +529,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self.renderer.RemoveAllViewProps()
             self.renderer.AddVolume(volume1)
-            #self.renderer.AddVolume(volume2)
+            self.renderer.AddVolume(volume2)
 
             # Восстанавливаем положение камеры
             camera.SetPosition(position)
