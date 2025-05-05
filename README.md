@@ -42,7 +42,6 @@ This project is a DICOM viewer with volume rendering capabilities, implemented u
     ```bash
     python app.py
     ```
-
 3. For use Nvidia CUDA
     ```bash
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
