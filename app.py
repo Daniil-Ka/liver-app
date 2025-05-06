@@ -1,3 +1,4 @@
+import os
 import sys
 
 import numpy as np
@@ -134,6 +135,7 @@ class MainWindow(QtWidgets.QMainWindow):
     #                                  Loading & Rendering Functions                              #
     ###############################################################################################
 
+
     def load_dicom_folder(self):
         """
         Загружает DICOM-серию из фиксированных папок.
@@ -147,8 +149,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Задаём фиксированные пути к папкам (закомментирован вызов диалога)
         folder_dialog = QFileDialog.getExistingDirectory(self, "Выберите папку с снимками DICOM")
+        folder1 = folder_dialog
+        output_dir = os.path.join(folder_dialog, "processed")
+
+
+
         folder1 = r"DICOM_DATASET"
-        folder2 = r"DICOM_MASKED"
+        folder2 = r"DICOM_MASKED1"
 
         # Загрузка исходного объёма из folder1 (для лучевого рендеринга)
         self.reader1 = vtk.vtkDICOMImageReader()
