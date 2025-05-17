@@ -11,6 +11,8 @@ from vtk import vtkInteractorStyleTrackballCamera
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util.numpy_support import vtk_to_numpy
 
+from model.process_dicom import find_dicom_files, process_dicom
+
 
 class MainWindow(QtWidgets.QMainWindow):
 
@@ -134,7 +136,28 @@ class MainWindow(QtWidgets.QMainWindow):
     ###############################################################################################
     #                                  Loading & Rendering Functions                              #
     ###############################################################################################
+    @staticmethod
+    def dicom_processing(source, dest):
+        """
+        Обрабатываем все .dcm из папки и сохраняем новые .dcm
+        :param source:
+        :param dest:
+        :return:
+        """
+        dicom_files = find_dicom_files(source)
+        processed_dicom = [process_dicom(dicom, dest) for dicom in dicom_files]
 
+    # окно с прогресс-баром
+    class ProgressDialog(QtWidgets.QDialog):
+        def __init__(self, total_steps, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Обработка DICOM")
+            self.setFixedSize(300, 100)
+            self.progress_bar = QtWidgets.QProgressBar(self)
+            self.progress_bar.setGeometry(20, 30, 260, 25)
+            self.progress_bar.setMinimum(0)
+            self.progress_bar.setMaximum(total_steps)
+            self.progress_bar.setValue(0)
 
     def load_dicom_folder(self):
         """
@@ -148,14 +171,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.renderer.RemoveAllViewProps()
 
         # Задаём фиксированные пути к папкам (закомментирован вызов диалога)
-        folder_dialog = QFileDialog.getExistingDirectory(self, "Выберите папку с снимками DICOM")
-        folder1 = folder_dialog
-        output_dir = os.path.join(folder_dialog, "processed")
+        folder1 = folder_dialog = QFileDialog.getExistingDirectory(self, "Выберите папку с снимками DICOM")
+        folder2 = output_dir = os.path.join(folder1, "processed")
 
-
-
-        folder1 = r"DICOM_DATASET"
-        folder2 = r"DICOM_MASKED1"
+        self.dicom_processing(folder_dialog, output_dir)
 
         # Загрузка исходного объёма из folder1 (для лучевого рендеринга)
         self.reader1 = vtk.vtkDICOMImageReader()
