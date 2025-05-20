@@ -155,7 +155,7 @@ class MainWindow(QtWidgets.QMainWindow):
         :param dest:
         :return:
         """
-        dicom_files = find_dicom_files(source)
+        dicom_files = find_dicom_files(source, recursive=False)
         total = len(dicom_files)
 
         progress_dialog = MainWindow.ProgressDialog(total_steps=total, parent=self)
@@ -181,7 +181,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Задаём фиксированные пути к папкам (закомментирован вызов диалога)
         folder1 = folder_dialog = QFileDialog.getExistingDirectory(self, "Выберите папку с снимками DICOM")
-        folder2 = output_dir = os.path.join(folder1, "processed")
+        # folder2
+        folder_name = os.path.basename(folder_dialog.rstrip(os.sep))
+        # Родительская директория
+        parent_dir = os.path.dirname(folder_dialog)
+        # Новый путь для processed
+        output_dir = os.path.join(parent_dir, f"{folder_name}_processed")
+        folder2 = output_dir
 
         self.dicom_processing(folder_dialog, output_dir)
 
@@ -642,7 +648,7 @@ class MainWindow(QtWidgets.QMainWindow):
         click_pos = self.render_window_interactor.GetEventPosition()
         print("Click position (screen):", click_pos)
         picker = vtk.vtkVolumePicker()
-        picker.Set
+
         picker.Pick(click_pos[0], click_pos[1], 0, self.renderer)
         pick_position = picker.GetPickPosition()
         print("Picked world coordinates:", pick_position)

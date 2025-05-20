@@ -28,17 +28,27 @@ def show_masks_grid(images, cols=5):
     plt.show()
 
 
-def find_dicom_files(folder_path) -> List[os.PathLike]:
+def find_dicom_files(folder_path, recursive: bool = True) -> List[os.PathLike]:
     """
     Ищет все dicom файлы в каталоге
+    :param recursive:  Искать во вложенныз папках?
     :param folder_path: Целевавая папка
     :return: список путей файлов .dcm
     """
     find_dicom = []
-    for root, _, files in os.walk(folder_path):
-        for file in files:
-            if file.lower().endswith(".dcm"):
-                find_dicom.append(os.path.join(root, file))
+
+    if recursive:
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                if file.lower().endswith(".dcm"):
+                    find_dicom.append(os.path.join(root, file))
+    else:
+        # Только файлы в указанной директории (без рекурсии)
+        for file in os.listdir(folder_path):
+            full_path = os.path.join(folder_path, file)
+            if os.path.isfile(full_path) and file.lower().endswith(".dcm"):
+                find_dicom.append(full_path)
+                
     return find_dicom
 
 
