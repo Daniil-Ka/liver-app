@@ -18,8 +18,11 @@ if torch.cuda.is_available():
     print(f"Всего CUDA-устройств: {torch.cuda.device_count()}")
     for i in range(torch.cuda.device_count()):
         print(f"[{i}] {torch.cuda.get_device_name(i)}")
+    model.to('cuda')
 else:
     print("CUDA не доступна — будет использоваться CPU.")
+device = next(model.parameters()).device
+print(f"YOLOv8 работает на устройстве: {device}")
 
 end_time = time.time()
 loading_time = end_time - start_time
