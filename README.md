@@ -22,12 +22,6 @@ This project is a DICOM viewer with volume rendering capabilities, implemented u
 ## User Interface
 - The UI is designed using PyQt5, providing an intuitive and user-friendly environment.
 
-## Demo
- 
-
-https://github.com/Hazem-Raafat/DICOM-Viewer-with-Volume-Rendering/assets/100636693/7d9ee69c-c908-486a-95e9-b5d2631b46ea
-
-
 ## How to Use
 
 1. Launch the application.
@@ -41,10 +35,15 @@ https://github.com/Hazem-Raafat/DICOM-Viewer-with-Volume-Rendering/assets/100636
 ## How to Run
 
 1. Install the required dependencies using 
-```bash
-pip install -r requirements.txt
-```
+    ```bash
+    pip install -r requirements.txt
+    ```
 2. Run the application using 
-```bash
-python app.py
-```
+    ```bash
+    python app.py
+    ```
+
+3. For use Nvidia CUDA
+    ```bash
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+    ```

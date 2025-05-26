@@ -108,6 +108,7 @@ def process_dicom(file: os.PathLike, output_dir="DICOM_MASKED1") -> os.PathLike:
 
     return out_path
 
+
 if __name__ == "__main__":
     dicom_files = find_dicom_files('../DICOM_DATASET')
     processed_dicom = [process_dicom(dicom) for dicom in dicom_files]

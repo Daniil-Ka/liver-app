@@ -12,6 +12,7 @@ from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtkmodules.util.numpy_support import vtk_to_numpy
 
 from model.process_dicom import find_dicom_files, process_dicom
+from utils import resource_path
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -47,7 +48,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         Загружает UI, настраивает окно, VTK-виджет и соединяет сигналы.
         """
-        self.ui = uic.loadUi('mainwindow.ui', self)
+        self.ui = uic.loadUi(resource_path('mainwindow.ui'), self)
         self.setWindowTitle("DICOM Viewer")
         self.setWindowIcon(QIcon("icons\\skull.png"))
         # Инициализация переменных
@@ -155,18 +156,21 @@ class MainWindow(QtWidgets.QMainWindow):
         :param dest:
         :return:
         """
-        dicom_files = find_dicom_files(source, recursive=False)
-        total = len(dicom_files)
+        try:
+            dicom_files = find_dicom_files(source, recursive=False)
+            total = len(dicom_files)
 
-        progress_dialog = MainWindow.ProgressDialog(total_steps=total, parent=self)
-        progress_dialog.show()
+            progress_dialog = MainWindow.ProgressDialog(total_steps=total, parent=self)
+            progress_dialog.show()
 
-        for idx, dicom in enumerate(dicom_files):
-            process_dicom(dicom, dest)
-            progress_dialog.progress_bar.setValue(idx + 1)
-            QtWidgets.QApplication.processEvents()  # Чтобы UI не "замерзал"
+            for idx, dicom in enumerate(dicom_files):
+                process_dicom(dicom, dest)
+                progress_dialog.progress_bar.setValue(idx + 1)
+                QtWidgets.QApplication.processEvents()  # Чтобы UI не "замерзал"
 
-        progress_dialog.close()
+            progress_dialog.close()
+        except Exception as e:
+            print(e)
 
     def load_dicom_folder(self):
         """

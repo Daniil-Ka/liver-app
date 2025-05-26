@@ -43,6 +43,7 @@ def merge_dicom_series_from_folder(folder_path, output_path):
     new_ds.save_as(output_path)
     print(f"Объединённый DICOM сохранён в: {output_path}")
 
+
 if __name__ == '__main__':
     folder_path = "./"  # замените на путь к вашей папке с DICOM файлами
     output_file = "merged.dcm"

@@ -1,11 +1,14 @@
 import time
+
+from utils import resource_path
+
 start_time = time.time()
 
 from pathlib import Path
 import torch
 from ultralytics import YOLO
 
-path = Path(__file__).parent / "best (10).pt"
+path = resource_path("model/weights.pt")
 model = YOLO(path)
 
 print(
