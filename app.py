@@ -643,22 +643,83 @@ class MainWindow(QtWidgets.QMainWindow):
     #                          Brush (editing model with mouse) Functions                         #
     ###############################################################################################
 
+    def compute_ray(self, x, y):
+        renderer = self.renderer
+        interactor = self.render_window_interactor
+
+        # Преобразуем координаты окна в координаты нормализованного пространства
+        world_point1 = [0, 0, 0, 0]
+        world_point2 = [0, 0, 0, 0]
+
+        renderer.SetDisplayPoint(x, y, 0)  # ближняя плоскость
+        renderer.DisplayToWorld()
+        world_point1 = renderer.GetWorldPoint()[:3]
+
+        renderer.SetDisplayPoint(x, y, 1)  # дальняя плоскость
+        renderer.DisplayToWorld()
+        world_point2 = renderer.GetWorldPoint()[:3]
+
+        return world_point1, world_point2
+
+    def find_liver_voxel_on_ray(self, start, end, liver_data):
+        spacing = liver_data.GetSpacing()
+        origin = liver_data.GetOrigin()
+        extent = liver_data.GetExtent()
+        dims = liver_data.GetDimensions()
+
+        direction = [end[i] - start[i] for i in range(3)]
+        length = sum([d ** 2 for d in direction]) ** 0.5
+        steps = int(length / min(spacing))  # дискретизация с шагом вокселя
+
+        for step in range(steps):
+            t = step / steps
+            point = [start[i] + t * direction[i] for i in range(3)]
+
+            i = int((point[0] - origin[0]) / spacing[0])
+            j = int((point[1] - origin[1]) / spacing[1])
+            k = int((point[2] - origin[2]) / spacing[2])
+
+            if (extent[0] <= i <= extent[1] and
+                    extent[2] <= j <= extent[3] and
+                    extent[4] <= k <= extent[5]):
+                index = i + j * dims[0] + k * dims[0] * dims[1]
+                value = liver_data.GetPointData().GetScalars().GetTuple1(index)
+                if value > 0:  # т.е. печень в этом вокселе есть
+                    return point  # нашли первую попавшую воксель печени
+
+        return None
+
     def on_left_button_press(self, obj, event):
-        """
-        Обработчик левого клика мыши.
-        Использует vtkVolumePicker для определения мировой координаты клика,
-        затем вызывает изменение интенсивности вокселей.
-        """
         click_pos = self.render_window_interactor.GetEventPosition()
         print("Click position (screen):", click_pos)
-        picker = vtk.vtkVolumePicker()
 
-        picker.Pick(click_pos[0], click_pos[1], 0, self.renderer)
-        pick_position = picker.GetPickPosition()
-        print("Picked world coordinates:", pick_position)
-        if pick_position != (0.0, 0.0, 0.0):
-            self.brush_stroke_at_position(pick_position)
+        ray_start, ray_end = self.compute_ray(click_pos[0], click_pos[1])
+        hit_point = self.find_liver_voxel_on_ray(ray_start, ray_end, self.liver_data)
+
+        if hit_point:
+            print("Hit point inside liver:", hit_point)
+            self.brush_stroke_at_position(hit_point)
+        else:
+            print("No liver voxel hit along ray")
+
         obj.InvokeEvent("LeftButtonPressEvent")
+
+
+    # def on_left_button_press(self, obj, event):
+    #     """
+    #     Обработчик левого клика мыши.
+    #     Использует vtkVolumePicker для определения мировой координаты клика,
+    #     затем вызывает изменение интенсивности вокселей.
+    #     """
+    #     click_pos = self.render_window_interactor.GetEventPosition()
+    #     print("Click position (screen):", click_pos)
+    #     picker = vtk.vtkVolumePicker()
+    #     picker.Pick(click_pos[0], click_pos[1], 0, self.renderer)
+    #     pick_position = picker.GetPickPosition()
+    #     print("Picked world coordinates:", pick_position)
+    #     if pick_position != (0.0, 0.0, 0.0):
+    #         self.brush_stroke_at_position(pick_position)
+    #     obj.InvokeEvent("LeftButtonPressEvent")
 
     def brush_stroke_at_position(self, world_coord):
         """
